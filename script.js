@@ -24,6 +24,19 @@ const QR_SIZE = 150;
 const TILE_SIZE = QR_SIZE * 2;
 const TILE_STEP = QR_SIZE;
 
+// How long a code keeps its box after the last frame it was decoded in. The
+// tiled scan drops a code every few frames — motion blur, or a glare on the
+// paper — and without this grace period the boxes flicker.
+const TRACK_TIMEOUT_MS = 400;
+// Past centers kept per code. At ~30fps this is roughly a second of movement,
+// enough to read which way a code is travelling.
+const TRAIL_LENGTH = 30;
+
+// Codes seen recently, keyed by their decoded text. That text is the only
+// identity a QR code carries, so two codes printed with the same content are
+// a single track as far as this app is concerned.
+const tracks = new Map();
+
 navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS)
   .then((stream) => {
     video.srcObject = stream;
@@ -48,14 +61,48 @@ function tick() {
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     sampleCtx.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
 
+    updateTracks(scanForQRCodes(), performance.now());
+
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-    for (const qrCode of scanForQRCodes()) {
-      drawBox(qrCode.location);
-      drawLabel(qrCode.location, qrCode.data);
+    for (const track of tracks.values()) {
+      drawTrail(track);
+      drawBox(track.location);
+      drawLabel(track.location, track.data);
     }
   }
 
   requestAnimationFrame(tick);
+}
+
+// Fold this frame's detections into the tracks, then drop the tracks that
+// haven't been seen for a while. Everything the overlay draws comes from here,
+// so a code that goes missing for a frame or two keeps its box and its trail.
+function updateTracks(qrCodes, now) {
+  for (const qrCode of qrCodes) {
+    const track = tracks.get(qrCode.data);
+
+    if (track) {
+      track.location = qrCode.location;
+      track.lastSeen = now;
+      track.trail.push(centerOf(qrCode.location));
+      if (track.trail.length > TRAIL_LENGTH) {
+        track.trail.shift();
+      }
+    } else {
+      tracks.set(qrCode.data, {
+        data: qrCode.data,
+        location: qrCode.location,
+        lastSeen: now,
+        trail: [centerOf(qrCode.location)],
+      });
+    }
+  }
+
+  for (const [data, track] of tracks) {
+    if (now - track.lastSeen > TRACK_TIMEOUT_MS) {
+      tracks.delete(data);
+    }
+  }
 }
 
 function scanForQRCodes() {
@@ -140,6 +187,28 @@ function centerOf(location) {
     x: (topLeftCorner.x + bottomRightCorner.x) / 2,
     y: (topLeftCorner.y + bottomRightCorner.y) / 2,
   };
+}
+
+// The trail fades towards its oldest point, so the bright end reads as where
+// the code is now without needing an arrowhead.
+function drawTrail(track) {
+  if (track.trail.length < 2) {
+    return;
+  }
+
+  overlayCtx.lineWidth = Math.max(2, overlay.width * 0.003);
+  overlayCtx.lineCap = 'round';
+
+  for (let i = 1; i < track.trail.length; i++) {
+    const from = track.trail[i - 1];
+    const to = track.trail[i];
+
+    overlayCtx.strokeStyle = `rgba(0, 255, 0, ${(i / track.trail.length) * 0.6})`;
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(from.x, from.y);
+    overlayCtx.lineTo(to.x, to.y);
+    overlayCtx.stroke();
+  }
 }
 
 function drawBox(location) {
