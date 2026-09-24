@@ -2,10 +2,17 @@
 
 **2026-09-24 · Session 3 · setup: desktop with a top-down camera (Insta360 GO 3S as webcam)**
 
-**Before / after, live:**
+**Live comparison, three builds:**
 [original — jsQR crop windows, green boxes](https://spatial-qrcode-tracking-original.netlify.app)
 ·
+[engine swap only — zxing-wasm, same green boxes, no smoothing](https://spatial-qrcode-tracking-zxing.netlify.app)
+·
 [current — zxing-wasm, emoji markers, tracking](https://spatial-qrcode-tracking.netlify.app)
+
+The middle build (`demos/zxing-greenbox/`) is the reference implementation
+with a single variable changed — the decoder — and detections drawn raw,
+one frame at a time, no persistence. Whatever stability it shows *is* the
+engine's.
 
 First day running the app against a real camera and the printed six-code sheet.
 On screen: detection came and went, boxes flickered, and at most three of the
