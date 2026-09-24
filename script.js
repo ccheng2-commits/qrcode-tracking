@@ -26,8 +26,10 @@ const TILE_STEP = QR_SIZE;
 
 // How long a code keeps its box after the last frame it was decoded in. The
 // tiled scan drops a code every few frames — motion blur, or a glare on the
-// paper — and without this grace period the boxes flicker.
-const TRACK_TIMEOUT_MS = 400;
+// paper — and without this grace period the boxes flicker. The full tiled
+// scan only completes a few passes per second at 1080p, so the grace period
+// has to cover a couple of missed passes, not a couple of missed frames.
+const TRACK_TIMEOUT_MS = 1200;
 // Past centers kept per code. At ~30fps this is roughly a second of movement,
 // enough to read which way a code is travelling.
 const TRAIL_LENGTH = 30;
@@ -199,21 +201,18 @@ function offsetQRCode(qrCode, offsetX, offsetY) {
   };
 }
 
-// The same QR code is often found in more than one overlapping tile, so
-// collapse detections whose bounding boxes are centered near each other.
+// The same QR code is often found in more than one overlapping tile. Two
+// detections that decode to the same text are the same code as far as this
+// app is concerned (tracks are keyed by text), so keep the first of each;
+// detections with different text are always distinct codes, no matter how
+// close together they sit in the frame.
 function dedupeDetections(detections) {
+  const seen = new Set();
   const unique = [];
 
   for (const detection of detections) {
-    const center = centerOf(detection.location);
-    const isDuplicate = unique.some((existing) => {
-      const existingCenter = centerOf(existing.location);
-      const dx = center.x - existingCenter.x;
-      const dy = center.y - existingCenter.y;
-      return Math.sqrt(dx * dx + dy * dy) < QR_SIZE;
-    });
-
-    if (!isDuplicate) {
+    if (!seen.has(detection.data)) {
+      seen.add(detection.data);
       unique.push(detection);
     }
   }
