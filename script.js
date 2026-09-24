@@ -38,8 +38,10 @@ const TRAIL_LENGTH = 30;
 const tracks = new Map();
 
 // Decoded text mapped to the marker drawn over the code, so a printed code
-// stands in for the object it names. Lookup is case-insensitive; codes whose
-// text isn't listed keep the plain box and text label.
+// stands in for the object it names. Lookup is case-insensitive and treats
+// hyphens, underscores, and dashes as spaces, so the printed "object-a"
+// matches "object a"; codes whose text isn't listed keep the plain box and
+// text label.
 const EMOJI_MARKERS = {
   'phone': '📱',
   'object a': '🌸',
@@ -66,7 +68,8 @@ const EMOJI_MARKERS = {
 };
 
 function markerFor(data) {
-  return EMOJI_MARKERS[data.trim().toLowerCase()];
+  const key = data.toLowerCase().replace(/[-_–—]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return EMOJI_MARKERS[key];
 }
 
 navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS)
