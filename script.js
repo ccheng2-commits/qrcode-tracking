@@ -13,23 +13,29 @@ const VIDEO_CONSTRAINTS = {
   audio: false,
 };
 
-// Approximate size of a QR code in the captured frame, in pixels.
+// Fallback size for drawing when a detection is degenerate; the scan itself
+// makes no assumption about code size.
 const QR_SIZE = 150;
-// jsQR only ever returns one decoded symbol per call, so to find multiple
-// codes in a frame we scan overlapping crop windows across the image and
-// decode each one separately. The window is bigger than a code (with room
-// for its quiet zone) and the step is small enough that the overlap between
-// adjacent windows is at least one code-width, so no code can fall entirely
-// across a window boundary and get missed.
-const TILE_SIZE = QR_SIZE * 2;
-const TILE_STEP = QR_SIZE;
+// zxing-wasm reads every code in the frame in a single call, at any size,
+// in a few milliseconds. It replaced the earlier jsQR pipeline: jsQR can
+// only decode a code that mostly fills the image it is given, so it needed
+// fixed-size crop windows tuned to one viewing distance, and codes larger
+// than the window overlap were silently unfindable.
+const zxingReady = import('https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/es/reader/index.js')
+  .then((zxing) => (imageData) => zxing.readBarcodes(imageData, {
+    formats: ['QRCode'],
+    maxNumberOfSymbols: 8,
+    tryHarder: true,
+  }))
+  .catch((error) => {
+    console.error('Unable to load the barcode reader:', error);
+    return () => [];
+  });
 
 // How long a code keeps its box after the last frame it was decoded in. The
-// tiled scan drops a code every few frames — motion blur, or a glare on the
-// paper — and without this grace period the boxes flicker. The full tiled
-// scan only completes a few passes per second at 1080p, so the grace period
-// has to cover a couple of missed passes, not a couple of missed frames.
-const TRACK_TIMEOUT_MS = 1200;
+// scan drops a code every few frames — motion blur, or a glare on the
+// paper — and without this grace period the boxes flicker.
+const TRACK_TIMEOUT_MS = 500;
 // Past centers kept per code. At ~30fps this is roughly a second of movement,
 // enough to read which way a code is travelling.
 const TRAIL_LENGTH = 30;
@@ -94,11 +100,13 @@ video.addEventListener('loadedmetadata', () => {
   requestAnimationFrame(tick);
 });
 
-function tick() {
+// The scan is asynchronous, so the next frame is only scheduled once the
+// current one is fully processed — scans never overlap or pile up.
+async function tick() {
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     sampleCtx.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
 
-    updateTracks(scanForQRCodes(), performance.now());
+    updateTracks(await scanForQRCodes(), performance.now());
 
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
     for (const track of tracks.values()) {
@@ -147,58 +155,22 @@ function updateTracks(qrCodes, now) {
   }
 }
 
-function scanForQRCodes() {
-  const xs = getTilePositions(sampleCanvas.width);
-  const ys = getTilePositions(sampleCanvas.height);
-  const detections = [];
+async function scanForQRCodes() {
+  const readBarcodes = await zxingReady;
+  const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+  const results = await readBarcodes(frame);
 
-  for (const y of ys) {
-    for (const x of xs) {
-      const tile = sampleCtx.getImageData(x, y, TILE_SIZE, TILE_SIZE);
-      const qrCode = jsQR(tile.data, TILE_SIZE, TILE_SIZE);
-      if (qrCode) {
-        detections.push(offsetQRCode(qrCode, x, y));
-      }
-    }
-  }
-
-  return dedupeDetections(detections);
-}
-
-// Start offsets for tiles of TILE_SIZE covering `dimension`, stepping by
-// TILE_STEP and with a final tile flush against the far edge so the whole
-// frame is covered even when it doesn't divide evenly by the step.
-function getTilePositions(dimension) {
-  if (dimension <= TILE_SIZE) {
-    return [0];
-  }
-
-  const positions = [];
-  for (let pos = 0; pos + TILE_SIZE <= dimension; pos += TILE_STEP) {
-    positions.push(pos);
-  }
-
-  const lastPosition = dimension - TILE_SIZE;
-  if (positions[positions.length - 1] !== lastPosition) {
-    positions.push(lastPosition);
-  }
-
-  return positions;
-}
-
-function offsetQRCode(qrCode, offsetX, offsetY) {
-  const shift = (point) => ({ x: point.x + offsetX, y: point.y + offsetY });
-  const { topLeftCorner, topRightCorner, bottomRightCorner, bottomLeftCorner } = qrCode.location;
-
-  return {
-    data: qrCode.data,
-    location: {
-      topLeftCorner: shift(topLeftCorner),
-      topRightCorner: shift(topRightCorner),
-      bottomRightCorner: shift(bottomRightCorner),
-      bottomLeftCorner: shift(bottomLeftCorner),
-    },
-  };
+  return dedupeDetections(results
+    .filter((result) => result.text)
+    .map((result) => ({
+      data: result.text,
+      location: {
+        topLeftCorner: result.position.topLeft,
+        topRightCorner: result.position.topRight,
+        bottomRightCorner: result.position.bottomRight,
+        bottomLeftCorner: result.position.bottomLeft,
+      },
+    })));
 }
 
 // The same QR code is often found in more than one overlapping tile. Two
