@@ -37,6 +37,20 @@ const TRAIL_LENGTH = 30;
 // a single track as far as this app is concerned.
 const tracks = new Map();
 
+// Decoded text mapped to the marker drawn over the code, so a printed code
+// stands in for the object it names. Lookup is case-insensitive; codes whose
+// text isn't listed keep the plain box and text label.
+const EMOJI_MARKERS = {
+  'phone': '📱',
+  'object a': '🌸',
+  'object b': '🌻',
+  'object c': '🌺',
+};
+
+function markerFor(data) {
+  return EMOJI_MARKERS[data.trim().toLowerCase()];
+}
+
 navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS)
   .then((stream) => {
     video.srcObject = stream;
@@ -66,8 +80,13 @@ function tick() {
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
     for (const track of tracks.values()) {
       drawTrail(track);
-      drawBox(track.location);
-      drawLabel(track.location, track.data);
+      const emoji = markerFor(track.data);
+      if (emoji) {
+        drawEmoji(track.location, emoji);
+      } else {
+        drawBox(track.location);
+        drawLabel(track.location, track.data);
+      }
     }
   }
 
@@ -209,6 +228,24 @@ function drawTrail(track) {
     overlayCtx.lineTo(to.x, to.y);
     overlayCtx.stroke();
   }
+}
+
+// The emoji is sized from the detected top edge rather than QR_SIZE so it
+// covers the printed code even when the code sits nearer or farther than the
+// size the scanner assumes. textAlign is restored because drawLabel relies on
+// the canvas default.
+function drawEmoji(location, emoji) {
+  const { topLeftCorner, topRightCorner } = location;
+  const dx = topRightCorner.x - topLeftCorner.x;
+  const dy = topRightCorner.y - topLeftCorner.y;
+  const size = Math.max(QR_SIZE * 0.8, Math.sqrt(dx * dx + dy * dy)) * 1.2;
+  const center = centerOf(location);
+
+  overlayCtx.font = `${size}px sans-serif`;
+  overlayCtx.textAlign = 'center';
+  overlayCtx.textBaseline = 'middle';
+  overlayCtx.fillText(emoji, center.x, center.y);
+  overlayCtx.textAlign = 'start';
 }
 
 function drawBox(location) {
