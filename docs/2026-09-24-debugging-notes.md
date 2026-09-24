@@ -2,17 +2,23 @@
 
 **2026-09-24 · Session 3 · setup: desktop with a top-down camera (Insta360 GO 3S as webcam)**
 
-**Live comparison, three builds:**
-[original — jsQR crop windows, green boxes](https://spatial-qrcode-tracking-original.netlify.app)
-·
-[engine swap only — zxing-wasm, same green boxes, no smoothing](https://spatial-qrcode-tracking-zxing.netlify.app)
-·
-[current — zxing-wasm, emoji markers, tracking](https://spatial-qrcode-tracking.netlify.app)
+**The iteration, live — four builds in the order it actually happened:**
 
-The middle build (`demos/zxing-greenbox/`) is the reference implementation
-with a single variable changed — the decoder — and detections drawn raw,
-one frame at a time, no persistence. Whatever stability it shows *is* the
-engine's.
+1. [reference](https://spatial-qrcode-tracking-original.netlify.app) —
+   the class repo as handed out: jsQR crop windows, green boxes.
+2. [jsqr-emoji](https://spatial-qrcode-tracking-jsqr-emoji.netlify.app) —
+   emoji markers and cross-frame tracking added on top of the old engine
+   (commit `437e016`). This is the build whose symptoms — flicker, at most
+   three of six codes — prompted everything below.
+3. [engine swap only](https://spatial-qrcode-tracking-zxing.netlify.app) —
+   the reference UI untouched, decoder replaced with zxing-wasm, detections
+   drawn raw with no smoothing (`demos/zxing-greenbox/`). Single variable:
+   whatever stability it shows *is* the engine's.
+4. [current](https://spatial-qrcode-tracking.netlify.app) —
+   zxing-wasm plus the emoji markers and tracking.
+
+Builds 1 and 2 are deployed straight from git history; nothing is
+reconstructed after the fact.
 
 First day running the app against a real camera and the printed six-code sheet.
 On screen: detection came and went, boxes flickered, and at most three of the
