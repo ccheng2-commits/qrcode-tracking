@@ -106,10 +106,17 @@ async function tick() {
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     sampleCtx.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
 
-    updateTracks(await scanForQRCodes(), performance.now());
+    const now = performance.now();
+    const detections = await scanForQRCodes();
+    updateTracks(detections, now);
+    updateFingertip(now);
+    updatePresence(detections, now, sampleCanvas.width, sampleCanvas.height);
 
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
     for (const track of tracks.values()) {
+      if (objectFor(track.data)) {
+        continue;
+      }
       drawTrail(track);
       const emoji = markerFor(track.data);
       if (emoji) {
@@ -119,6 +126,10 @@ async function tick() {
         drawLabel(track.location, track.data);
       }
     }
+    updateBubbleTouches(now);
+    drawCapture(overlayCtx, now);
+    drawReferents(overlayCtx, tracks, now);
+    drawFingertip(overlayCtx);
   }
 
   requestAnimationFrame(tick);
