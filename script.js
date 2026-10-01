@@ -114,10 +114,10 @@ async function tick() {
 
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
     for (const track of tracks.values()) {
-      drawTrail(track);
       if (objectFor(track.data)) {
         continue;
       }
+      drawTrail(track);
       const emoji = markerFor(track.data);
       if (emoji) {
         drawEmoji(track.location, emoji);
@@ -126,6 +126,8 @@ async function tick() {
         drawLabel(track.location, track.data);
       }
     }
+    updateBubbleTouches(now);
+    drawCapture(overlayCtx, now);
     drawReferents(overlayCtx, tracks, now);
     drawFingertip(overlayCtx);
   }

@@ -5,6 +5,10 @@
 // seen. Notes live in localStorage, so they survive a reload on the same
 // browser.
 //
+// The default screen is a Pokémon GO style catch: throwing a printed Poké Ball
+// onto a book's code releases the book's cover from it (capture.js draws
+// that). The notes panel sits behind the N key.
+//
 // Covering a code with a finger is a button press. A hand model finds the
 // index fingertip; a code that has been steady on the desk and then vanishes
 // with the fingertip over it was pressed, not taken away. Holding the press for
@@ -18,16 +22,19 @@ const OBJECTS = {
     title: 'Reclaiming Conversation',
     author: 'Sherry Turkle',
     color: '#d6453d',
+    cover: 'assets/cover-turkle.jpg',
   },
   'https://www.amazon.com/dp/1616896566': {
     title: 'Coffee Lids',
     author: 'Louise Harpman & Scott Specht',
     color: '#b07a4f',
+    cover: 'assets/cover-coffee-lids.jpg',
   },
   'https://www.amazon.com/dp/0262542048': {
     title: 'Code as Creative Medium',
     author: 'Golan Levin & Tega Brain',
     color: '#5b7fd6',
+    cover: 'assets/cover-code-creative.jpg',
   },
 };
 
@@ -39,6 +46,14 @@ const STEADY_MS = 1000;
 const PRESS_MS = 700;
 // Missing longer than this means the object left the desk.
 const REMOVED_MS = 3000;
+// A code that vanishes under a patch this red was caught by a thrown Poké Ball.
+// The printed ball's top half is solid red; desk, skin and paper are not.
+const BALL_RED_FRACTION = 0.12;
+// The code has to stay hidden this long before the catch counts, so a ball
+// that bounces across a code on its way elsewhere doesn't catch it.
+const CATCH_MS = 250;
+// Shrink-back animation when the ball is lifted off.
+const RELEASE_MS = 350;
 
 const store = loadStore();
 // Per-object presence on the desk, keyed by code text.
@@ -117,6 +132,14 @@ function drawFingertip(ctx) {
 }
 
 let query = '';
+// The notes panel (assignment steps 3–5) stays hidden behind the Pokémon
+// screen until N is pressed.
+let panelOpen = false;
+// Codes whose cover was released into the room by a thrown ball, keyed by
+// code text: { location, caughtAt }.
+const caught = new Map();
+// Covers shrinking back into their code after the ball was lifted.
+const releasing = [];
 let selected = null;
 let selectedAt = 0;
 
@@ -176,6 +199,10 @@ function updatePresence(detections, now, frameWidth, frameHeight) {
     visible.add(detection.data);
 
     let state = presence.get(detection.data);
+    if (caught.has(detection.data)) {
+      releasing.push({ data: detection.data, ...caught.get(detection.data), releasedAt: now });
+      caught.delete(detection.data);
+    }
     if (!state || state.missingSince) {
       const steadySince = state && now - state.missingSince < PRESS_MS ? state.steadySince : now;
       state = { steadySince, missingSince: 0, fired: false };
@@ -204,10 +231,19 @@ function updatePresence(detections, now, frameWidth, frameHeight) {
     const missingFor = now - state.missingSince;
     const wasSteady = state.missingSince - state.steadySince >= STEADY_MS;
 
+    if (caught.has(data)) {
+      continue;
+    }
+    if (wasSteady && missingFor >= CATCH_MS && redFractionAt(state.location) >= BALL_RED_FRACTION) {
+      state.fired = true;
+      caught.set(data, { location: state.location, caughtAt: now });
+      continue;
+    }
+
     // With the hand model, the fingertip has to be over the code; without it,
     // other codes staying visible rules out the whole camera being blocked.
     const pressing = handLandmarker ? fingertipOver(state.location) : othersVisible;
-    if (!state.fired && wasSteady && pressing && missingFor >= PRESS_MS) {
+    if (panelOpen && !state.fired && wasSteady && pressing && missingFor >= PRESS_MS) {
       state.fired = true;
       select(data);
     }
@@ -217,6 +253,35 @@ function updatePresence(detections, now, frameWidth, frameHeight) {
       renderPanel();
     }
   }
+}
+
+// Share of strongly red pixels in the box around a code's last position,
+// sampled from the frame the scanner just read. Every fourth pixel is plenty.
+function redFractionAt(location) {
+  const xs = quadOf(location).map((p) => p.x);
+  const ys = quadOf(location).map((p) => p.y);
+  const pad = sideOf(location) * 0.1;
+  const x = Math.max(0, Math.floor(Math.min(...xs) - pad));
+  const y = Math.max(0, Math.floor(Math.min(...ys) - pad));
+  const w = Math.min(sampleCanvas.width - x, Math.ceil(Math.max(...xs) - Math.min(...xs) + pad * 2));
+  const h = Math.min(sampleCanvas.height - y, Math.ceil(Math.max(...ys) - Math.min(...ys) + pad * 2));
+  if (w <= 0 || h <= 0) {
+    return 0;
+  }
+
+  const pixels = sampleCtx.getImageData(x, y, w, h).data;
+  let red = 0;
+  let total = 0;
+  for (let i = 0; i < pixels.length; i += 16) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    total++;
+    if (r > 110 && r > g * 1.7 && r > b * 1.7) {
+      red++;
+    }
+  }
+  return red / total;
 }
 
 function select(data) {
@@ -231,7 +296,7 @@ function select(data) {
 
 // Progress of a cover in progress, 0..1, or null when the code isn't covered.
 function coverProgress(state, now) {
-  if (!state.missingSince || state.fired) {
+  if (!panelOpen || !state.missingSince || state.fired) {
     return null;
   }
   if (state.missingSince - state.steadySince < STEADY_MS) {
@@ -244,6 +309,9 @@ function coverProgress(state, now) {
 }
 
 function drawReferents(ctx, tracks, now) {
+  if (!panelOpen) {
+    return;
+  }
   const highlighting = query && [...Object.keys(OBJECTS)].some(matchesQuery);
 
   for (const track of tracks.values()) {
@@ -501,6 +569,7 @@ function renderPanel() {
 function setupPanel() {
   const panel = document.createElement('aside');
   panel.id = 'ref-panel';
+  panel.hidden = true;
   panel.innerHTML = `
     <h1>Object referents</h1>
     <p class="ref-hint">Press a finger on a book's code to select it.</p>
@@ -534,6 +603,13 @@ function setupPanel() {
     addNote(selected, note.value.trim(), image);
     note.value = '';
     panel.querySelector('#ref-image').value = '';
+  });
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() === 'n' && !event.target.closest('input, textarea')) {
+      panelOpen = !panelOpen;
+      panel.hidden = !panelOpen;
+    }
   });
 
   renderPanel();

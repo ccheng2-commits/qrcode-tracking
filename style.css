@@ -110,3 +110,138 @@ html, body {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Pokémon GO style chrome over the live desk. Only the notes panel takes
+   input; everything here is decoration, so clicks fall through to the
+   bubble hit-test. */
+#go-chrome {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #fff;
+}
+
+.go-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.28);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  display: grid;
+  place-items: center;
+}
+
+.go-btn svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.go-run {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+}
+
+.go-ar {
+  position: absolute;
+  top: 32px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.go-ar i {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: #4fd1a5;
+  position: relative;
+}
+
+.go-ar i::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.go-pill {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 280px);
+  padding: 10px 20px 10px 12px;
+  border-radius: 999px;
+  background: rgba(60, 60, 64, 0.55);
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.go-pill-dot {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: inset 0 0 0 5px rgba(60, 60, 64, 0.9);
+}
+
+.go-ball {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.go-ball img {
+  width: 104px;
+  height: 104px;
+  display: block;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+}
+
+.go-ball span {
+  position: absolute;
+  right: -30px;
+  bottom: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.go-side {
+  position: absolute;
+  right: 24px;
+  bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#ref-panel {
+  top: 96px;
+  max-height: calc(100vh - 112px);
+}
